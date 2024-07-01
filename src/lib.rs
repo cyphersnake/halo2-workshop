@@ -52,16 +52,14 @@
 /// - gate2: 1 - (acc + 1) * inv(acc + 1) = 0
 ///
 /// Alternative approaches include using a lookup table for possible accumulator values but this is less optimal.
-use std::{iter, marker::PhantomData};
+use std::marker::PhantomData;
 
 use halo2_proofs::{
-    circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value},
+    circuit::{Layouter, SimpleFloorPlanner, Value},
     pasta::group::ff::PrimeField,
     plonk::{Advice, Circuit, Column, ConstraintSystem, Expression, Selector, TableColumn},
     poly::Rotation,
 };
-
-const MAX_LEN: usize = 10;
 
 pub struct BracketCircuit<F: PrimeField, const MAX_LEN: usize> {
     input: [char; MAX_LEN],
@@ -85,7 +83,6 @@ pub struct Config {
     s_not_min_one: Selector,
 
     input: Column<Advice>,
-    previous_result: Column<Advice>,
     result: Column<Advice>,
 
     invert_result: Column<Advice>,
@@ -110,12 +107,10 @@ impl<F: PrimeField, const L: usize> Circuit<F> for BracketCircuit<F, L> {
 
             result: meta.advice_column(),
             input: meta.advice_column(),
-            previous_result: meta.advice_column(),
             invert_result: meta.advice_column(),
             table: meta.lookup_table_column(),
         };
         meta.enable_equality(config.result);
-        meta.enable_equality(config.previous_result);
 
         meta.create_gate("accumulation", |meta| {
             let _81 = Expression::Constant(F::from(81));
@@ -126,8 +121,8 @@ impl<F: PrimeField, const L: usize> Circuit<F> for BracketCircuit<F, L> {
             let s_is_zero = meta.query_selector(config.s_is_zero);
 
             let input = meta.query_advice(config.input, Rotation::cur());
-            let result = meta.query_advice(config.result, Rotation::cur());
-            let previous_result = meta.query_advice(config.previous_result, Rotation::cur());
+            let result = meta.query_advice(config.result, Rotation::next());
+            let previous_result = meta.query_advice(config.result, Rotation::cur());
 
             let function = -(input.clone() * (_81 * input.clone() - _3281) * _inv_1640);
 
@@ -174,43 +169,37 @@ impl<F: PrimeField, const L: usize> Circuit<F> for BracketCircuit<F, L> {
         layouter.assign_region(
             || "input",
             |mut region| {
+                let result_at_first_row = region.assign_advice(
+                    || "accumulator",
+                    config.result,
+                    0,
+                    || Value::known(F::ZERO),
+                )?;
+
+                region.assign_advice(
+                    || "accumulator",
+                    config.invert_result,
+                    0,
+                    || Value::known(F::ONE),
+                )?;
+
                 self.input
                     .iter()
                     .map(|sym| Value::known(F::from(*sym as u64)))
                     .enumerate()
-                    .try_fold(None, |prev: Option<AssignedCell<F, F>>, (offset, value)| {
+                    .try_fold(result_at_first_row, |prev, (offset, value)| {
                         config.s_accumulation.enable(&mut region, offset)?;
 
                         region.assign_advice(|| "input", config.input, offset, || value)?;
 
                         let mut acc_value = -(value * ((_81 * value) - _3281) * _inv_1640);
 
-                        if let Some(previous_row_cell) = prev {
-                            let assigned_prev_current_row = region.assign_advice(
-                                || "previous result",
-                                config.previous_result,
-                                offset,
-                                || previous_row_cell.value().copied(),
-                            )?;
-                            region.constrain_equal(
-                                assigned_prev_current_row.cell(),
-                                previous_row_cell.cell(),
-                            )?;
-
-                            acc_value = previous_row_cell.value().copied() + acc_value;
-                        } else {
-                            region.assign_advice(
-                                || "accumulator",
-                                config.previous_result,
-                                offset,
-                                || Value::known(F::ZERO),
-                            )?;
-                        }
+                        acc_value = prev.value().copied() + acc_value;
 
                         let accum = region.assign_advice(
                             || "accumulator",
                             config.result,
-                            offset,
+                            offset + 1,
                             || acc_value,
                         )?;
 
@@ -218,11 +207,11 @@ impl<F: PrimeField, const L: usize> Circuit<F> for BracketCircuit<F, L> {
                         region.assign_advice(
                             || "inverted accumulator",
                             config.invert_result,
-                            offset,
-                            || acc_value.map(|v| (v + F::ONE).invert().unwrap_or_else(|| F::ZERO)),
+                            offset + 1,
+                            || acc_value.map(|v| v.add(F::ONE).invert().unwrap_or_else(|| F::ZERO)),
                         )?;
 
-                        Result::<_, halo2_proofs::plonk::Error>::Ok(Some(accum))
+                        Result::<_, halo2_proofs::plonk::Error>::Ok(accum)
                     })?;
 
                 config.s_is_zero.enable(&mut region, L - 1)?;
