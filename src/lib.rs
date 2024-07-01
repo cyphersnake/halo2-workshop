@@ -1,3 +1,4 @@
+#![allow(clippy::just_underscores_and_digits)]
 /// # Balanced Bracket Verification Circuit
 ///
 /// This Rust code and its zk-SNARK adaptation verify if a string of brackets `('` and `')'` is balanced.
@@ -47,18 +48,20 @@
 /// The circuit design includes:
 /// - lookup0: input in [40, 41]
 /// - gate0: (prev_acc + (81 - 2 * input)) - acc = 0
-/// - gate1: acc * (1 - acc * inv_acc) = 0
-/// - gate2: 1 - acc * inv_acc = 0
+/// - gate1: (acc + 1) * (1 - (acc + 1) * inv(acc + 1)) = 0
+/// - gate2: 1 - (acc + 1) * inv(acc + 1) = 0
 ///
 /// Alternative approaches include using a lookup table for possible accumulator values but this is less optimal.
-use std::marker::PhantomData;
+use std::{iter, marker::PhantomData};
 
 use halo2_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner, Value},
+    circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value},
     pasta::group::ff::PrimeField,
-    plonk::{Advice, Circuit, Column, ConstraintSystem, TableColumn},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Expression, Selector, TableColumn},
     poly::Rotation,
 };
+
+const MAX_LEN: usize = 10;
 
 pub struct BracketCircuit<F: PrimeField> {
     input: String,
@@ -77,9 +80,15 @@ impl<F: PrimeField> BracketCircuit<F> {
 // Stores the configuration of the table (columns) that the circuit needs
 #[derive(Clone)]
 pub struct Config {
+    s_accumulation: Selector,
+    s_is_zero: Selector,
+    s_not_min_one: Selector,
+
     input: Column<Advice>,
-    accum: Column<Advice>,
-    inv_accum: Column<Advice>,
+    previous_result: Column<Advice>,
+    result: Column<Advice>,
+
+    invert_result: Column<Advice>,
     table: TableColumn,
 }
 
@@ -95,15 +104,58 @@ impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let config = Config {
+            s_accumulation: meta.selector(),
+            s_is_zero: meta.selector(),
+            s_not_min_one: meta.selector(),
+
+            result: meta.advice_column(),
             input: meta.advice_column(),
-            accum: meta.advice_column(),
-            inv_accum: meta.advice_column(),
+            previous_result: meta.advice_column(),
+            invert_result: meta.advice_column(),
             table: meta.lookup_table_column(),
         };
+        meta.enable_equality(config.result);
+        meta.enable_equality(config.previous_result);
+
+        meta.create_gate("accumulation", |meta| {
+            let _81 = Expression::Constant(F::from(81));
+            let _3281 = Expression::Constant(F::from(3281));
+            let _inv_1640 = Expression::Constant(F::from(1640).invert().unwrap());
+
+            let s_accumulation = meta.query_selector(config.s_accumulation);
+            let s_is_zero = meta.query_selector(config.s_is_zero);
+
+            let input = meta.query_advice(config.input, Rotation::cur());
+            let result = meta.query_advice(config.result, Rotation::cur());
+            let previous_result = meta.query_advice(config.previous_result, Rotation::cur());
+
+            let function = -(input.clone() * (_81 * input.clone() - _3281) * _inv_1640);
+
+            vec![
+                s_accumulation * (previous_result.clone() + function - result.clone()),
+                s_is_zero * result,
+            ]
+        });
+
+        meta.create_gate("neg check for accum", |meta| {
+            let _1 = Expression::Constant(F::from(1));
+
+            let s = meta.query_selector(config.s_not_min_one);
+
+            let r_plus_1 = meta.query_advice(config.result, Rotation::cur()) + _1.clone();
+            let inv_r_plus_1 = meta.query_advice(config.invert_result, Rotation::cur());
+
+            let gate1 = r_plus_1.clone() * (_1.clone() - r_plus_1.clone() * inv_r_plus_1.clone());
+            let gate2 = _1 - r_plus_1 * inv_r_plus_1;
+
+            vec![s.clone() * gate1, s * gate2]
+        });
 
         meta.lookup(|meta| {
-            let input = meta.query_advice(config.input, Rotation::cur());
-            vec![(input, config.table)]
+            vec![(
+                meta.query_advice(config.input, Rotation::cur()),
+                config.table,
+            )]
         });
 
         config
@@ -114,28 +166,77 @@ impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), halo2_proofs::plonk::Error> {
-        let _input = layouter.assign_region(
+        let _81 = Value::known(F::from(81));
+        let _2 = Value::known(F::from(2));
+        let _3281 = Value::known(F::from(3281));
+        let _inv_1640 = Value::known(F::from(1640).invert().unwrap());
+
+        layouter.assign_region(
             || "input",
             |mut region| {
                 self.input
                     .chars()
+                    .chain(iter::repeat(0 as char))
+                    .take(MAX_LEN)
+                    .map(|sym| Value::known(F::from(sym as u64)))
                     .enumerate()
-                    .map(|(offset, sym)| {
-                        region.assign_advice(
-                            || "input",
-                            config.input,
+                    .try_fold(None, |prev: Option<AssignedCell<F, F>>, (offset, value)| {
+                        config.s_accumulation.enable(&mut region, offset)?;
+                        config.s_not_min_one.enable(&mut region, offset)?;
+
+                        region.assign_advice(|| "input", config.input, offset, || value)?;
+
+                        let mut acc_value = -(value * ((_81 * value) - _3281) * _inv_1640);
+
+                        if let Some(previous_row_cell) = prev {
+                            let assigned_prev_current_row = region.assign_advice(
+                                || "previous result",
+                                config.previous_result,
+                                offset,
+                                || previous_row_cell.value().copied(),
+                            )?;
+                            region.constrain_equal(
+                                assigned_prev_current_row.cell(),
+                                previous_row_cell.cell(),
+                            )?;
+
+                            acc_value = previous_row_cell.value().copied() + acc_value;
+                        } else {
+                            region.assign_advice(
+                                || "accumulator",
+                                config.previous_result,
+                                offset,
+                                || Value::known(F::ZERO),
+                            )?;
+                        }
+
+                        let accum = region.assign_advice(
+                            || "accumulator",
+                            config.result,
                             offset,
-                            || Value::known(F::from(sym as u64)),
-                        )
-                    })
-                    .collect::<Result<Box<[_]>, _>>()
+                            || acc_value,
+                        )?;
+
+                        region.assign_advice(
+                            || "accumulator",
+                            config.invert_result,
+                            offset,
+                            || acc_value.map(|v| (v + F::ONE).invert().unwrap_or_else(|| F::ZERO)),
+                        )?;
+
+                        Result::<_, halo2_proofs::plonk::Error>::Ok(Some(accum))
+                    })?;
+
+                config.s_is_zero.enable(&mut region, MAX_LEN - 1)?;
+
+                Ok(())
             },
         )?;
 
         layouter.assign_table(
             || "input_check",
             |mut table| {
-                table.assign_cell(|| "", config.table, 0, || Value::known(F::from(0)))?;
+                table.assign_cell(|| "empty", config.table, 0, || Value::known(F::from(0)))?;
                 table.assign_cell(|| "(", config.table, 1, || Value::known(F::from(40)))?;
 
                 table.assign_cell(|| ")", config.table, 2, || Value::known(F::from(41)))
@@ -148,29 +249,45 @@ impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::{dev::MockProver, pasta::Fq};
+    use halo2_proofs::{dev::MockProver, pasta::Fp};
 
     use super::*;
 
     #[test]
     fn valid() {
-        MockProver::run(10, &BracketCircuit::<Fq>::new("()"), vec![])
+        MockProver::run(10, &BracketCircuit::<Fp>::new("(()(())())"), vec![])
             .unwrap()
             .verify()
             .unwrap();
     }
 
     #[test]
-    fn unvali_order() {
-        MockProver::run(10, &BracketCircuit::<Fq>::new(")("), vec![])
+    fn simple_valid() {
+        MockProver::run(10, &BracketCircuit::<Fp>::new("()"), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(10, &BracketCircuit::<Fp>::new(")("), vec![])
             .unwrap()
             .verify()
             .unwrap_err();
     }
 
     #[test]
-    fn solo_symbol() {
-        MockProver::run(10, &BracketCircuit::<Fq>::new("("), vec![])
+    fn unvalid_solo_symbol_open() {
+        MockProver::run(10, &BracketCircuit::<Fp>::new("("), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn unvalid_solo_symbol_close() {
+        MockProver::run(10, &BracketCircuit::<Fp>::new(")"), vec![])
             .unwrap()
             .verify()
             .unwrap_err();
@@ -178,7 +295,7 @@ mod tests {
 
     #[test]
     fn wrong_symbol() {
-        MockProver::run(10, &BracketCircuit::<Fq>::new("*"), vec![])
+        MockProver::run(10, &BracketCircuit::<Fp>::new("*"), vec![])
             .unwrap()
             .verify()
             .unwrap_err();

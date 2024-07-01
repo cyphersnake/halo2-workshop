@@ -5,3 +5,7 @@ edition = "2021"
 
 [dependencies]
 halo2_proofs = "0.3.0"
+tracing = "0.1.40"
+
+[dev-dependencies]
+tracing-test = "0.2.5"
