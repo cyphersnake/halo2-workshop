@@ -63,17 +63,17 @@ use halo2_proofs::{
 
 const MAX_LEN: usize = 10;
 
-pub struct BracketCircuit<F: PrimeField> {
-    input: String,
+pub struct BracketCircuit<F: PrimeField, const MAX_LEN: usize> {
+    input: [char; MAX_LEN],
     _p: PhantomData<F>,
 }
 
-impl<F: PrimeField> BracketCircuit<F> {
-    pub fn new(input: impl AsRef<str>) -> Self {
-        Self {
-            input: input.as_ref().to_string(),
+impl<F: PrimeField, const MAX_LEN: usize> BracketCircuit<F, MAX_LEN> {
+    pub fn try_new(input: impl AsRef<str>) -> Option<Self> {
+        Some(Self {
+            input: input.as_ref().chars().collect::<Vec<_>>().try_into().ok()?,
             _p: PhantomData,
-        }
+        })
     }
 }
 
@@ -92,7 +92,7 @@ pub struct Config {
     table: TableColumn,
 }
 
-impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
+impl<F: PrimeField, const L: usize> Circuit<F> for BracketCircuit<F, L> {
     type Config = Config;
 
     // Not important at this stage
@@ -175,14 +175,11 @@ impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
             || "input",
             |mut region| {
                 self.input
-                    .chars()
-                    .chain(iter::repeat(0 as char))
-                    .take(MAX_LEN)
-                    .map(|sym| Value::known(F::from(sym as u64)))
+                    .iter()
+                    .map(|sym| Value::known(F::from(*sym as u64)))
                     .enumerate()
                     .try_fold(None, |prev: Option<AssignedCell<F, F>>, (offset, value)| {
                         config.s_accumulation.enable(&mut region, offset)?;
-                        config.s_not_min_one.enable(&mut region, offset)?;
 
                         region.assign_advice(|| "input", config.input, offset, || value)?;
 
@@ -217,8 +214,9 @@ impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
                             || acc_value,
                         )?;
 
+                        config.s_not_min_one.enable(&mut region, offset)?;
                         region.assign_advice(
-                            || "accumulator",
+                            || "inverted accumulator",
                             config.invert_result,
                             offset,
                             || acc_value.map(|v| (v + F::ONE).invert().unwrap_or_else(|| F::ZERO)),
@@ -227,7 +225,7 @@ impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
                         Result::<_, halo2_proofs::plonk::Error>::Ok(Some(accum))
                     })?;
 
-                config.s_is_zero.enable(&mut region, MAX_LEN - 1)?;
+                config.s_is_zero.enable(&mut region, L - 1)?;
 
                 Ok(())
             },
@@ -255,15 +253,19 @@ mod tests {
 
     #[test]
     fn valid() {
-        MockProver::run(10, &BracketCircuit::<Fp>::new("(()(())())"), vec![])
-            .unwrap()
-            .verify()
-            .unwrap();
+        MockProver::run(
+            10,
+            &BracketCircuit::<Fp, 10>::try_new("(()(())())").unwrap(),
+            vec![],
+        )
+        .unwrap()
+        .verify()
+        .unwrap();
     }
 
     #[test]
     fn simple_valid() {
-        MockProver::run(10, &BracketCircuit::<Fp>::new("()"), vec![])
+        MockProver::run(10, &BracketCircuit::<Fp, 2>::try_new("()").unwrap(), vec![])
             .unwrap()
             .verify()
             .unwrap();
@@ -271,7 +273,7 @@ mod tests {
 
     #[test]
     fn unvalid_order() {
-        MockProver::run(10, &BracketCircuit::<Fp>::new(")("), vec![])
+        MockProver::run(10, &BracketCircuit::<Fp, 2>::try_new(")(").unwrap(), vec![])
             .unwrap()
             .verify()
             .unwrap_err();
@@ -279,7 +281,7 @@ mod tests {
 
     #[test]
     fn unvalid_solo_symbol_open() {
-        MockProver::run(10, &BracketCircuit::<Fp>::new("("), vec![])
+        MockProver::run(10, &BracketCircuit::<Fp, 1>::try_new("(").unwrap(), vec![])
             .unwrap()
             .verify()
             .unwrap_err();
@@ -287,7 +289,7 @@ mod tests {
 
     #[test]
     fn unvalid_solo_symbol_close() {
-        MockProver::run(10, &BracketCircuit::<Fp>::new(")"), vec![])
+        MockProver::run(10, &BracketCircuit::<Fp, 1>::try_new(")").unwrap(), vec![])
             .unwrap()
             .verify()
             .unwrap_err();
@@ -295,7 +297,7 @@ mod tests {
 
     #[test]
     fn wrong_symbol() {
-        MockProver::run(10, &BracketCircuit::<Fp>::new("*"), vec![])
+        MockProver::run(10, &BracketCircuit::<Fp, 1>::try_new("*").unwrap(), vec![])
             .unwrap()
             .verify()
             .unwrap_err();
