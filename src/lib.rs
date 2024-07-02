@@ -1,21 +1,22 @@
 use std::marker::PhantomData;
 
 use halo2_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner},
+    circuit::{Layouter, SimpleFloorPlanner, Value},
     pasta::group::ff::PrimeField,
-    plonk::{Circuit, ConstraintSystem},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, TableColumn},
+    poly::Rotation,
 };
 
 // Sets the circuit, and also stores the private input
-struct BracketCircuit<const L: usize, F: PrimeField> {
-    _input: [char; L],
+pub struct BracketCircuit<const L: usize, F: PrimeField> {
+    input: [char; L],
     _p: PhantomData<F>,
 }
 
 impl<const L: usize, F: PrimeField> BracketCircuit<L, F> {
     pub fn new(input: [char; L]) -> Self {
         Self {
-            _input: input,
+            input,
             _p: PhantomData,
         }
     }
@@ -23,7 +24,12 @@ impl<const L: usize, F: PrimeField> BracketCircuit<L, F> {
 
 // Stores the configuration of the table (columns) that the circuit needs
 #[derive(Clone)]
-struct Config {}
+pub struct Config {
+    // For input
+    input: Column<Advice>,
+    // For allowed ASCII codes
+    allowed: TableColumn,
+}
 
 impl<const L: usize, F: PrimeField> Circuit<F> for BracketCircuit<L, F> {
     type Config = Config;
@@ -35,21 +41,48 @@ impl<const L: usize, F: PrimeField> Circuit<F> for BracketCircuit<L, F> {
         todo!("Not needed at this stage.")
     }
 
-    fn configure(_meta: &mut ConstraintSystem<F>) -> Self::Config {
-        todo!(
-            "This specifies the table structure:
-            - columns
-            - gates (constraints)
-            - lookup tables"
-        )
+    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        let config = Config {
+            input: meta.advice_column(),
+            allowed: meta.lookup_table_column(),
+        };
+
+        meta.lookup(|table| {
+            let input = table.query_advice(config.input, Rotation::cur());
+
+            vec![(input, config.allowed)]
+        });
+
+        config
     }
 
     fn synthesize(
         &self,
-        _config: Self::Config,
-        _layouter: impl Layouter<F>,
+        config: Self::Config,
+        mut layouter: impl Layouter<F>,
     ) -> Result<(), halo2_proofs::plonk::Error> {
-        todo!("This is where the table cells will be filled in")
+        layouter.assign_table(
+            || "allowed",
+            |mut table| {
+                table.assign_cell(|| "empty", config.allowed, 0, || Value::known(F::ZERO))?;
+                table.assign_cell(
+                    || "(",
+                    config.allowed,
+                    1,
+                    || Value::known(F::from('(' as u64)),
+                )?;
+                table.assign_cell(
+                    || ")",
+                    config.allowed,
+                    2,
+                    || Value::known(F::from(')' as u64)),
+                )?;
+
+                Ok(())
+            },
+        )?;
+
+        todo!()
     }
 }
 
@@ -62,7 +95,3459 @@ mod tests {
     const K: u32 = 10;
 
     #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
     fn valid_1() {
-        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![]).unwrap();
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+| | | 
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    const K: u32 = 10;
+
+    #[test]
+    fn unvalid_sym() {
+        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap();
+    }
+
+    #[test]
+    fn unvalid_order() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
     }
 }
