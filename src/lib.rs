@@ -7,16 +7,25 @@ use halo2_proofs::{
 };
 
 // Sets the circuit, and also stores the private input
-#[derive(Default)]
-struct BracketCircuit<F: PrimeField> {
+struct BracketCircuit<const L: usize, F: PrimeField> {
+    _input: [char; L],
     _p: PhantomData<F>,
+}
+
+impl<const L: usize, F: PrimeField> BracketCircuit<L, F> {
+    pub fn new(input: [char; L]) -> Self {
+        Self {
+            _input: input,
+            _p: PhantomData,
+        }
+    }
 }
 
 // Stores the configuration of the table (columns) that the circuit needs
 #[derive(Clone)]
 struct Config {}
 
-impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
+impl<const L: usize, F: PrimeField> Circuit<F> for BracketCircuit<L, F> {
     type Config = Config;
 
     // Not important at this stage
@@ -50,8 +59,10 @@ mod tests {
 
     use super::*;
 
+    const K: u32 = 10;
+
     #[test]
-    fn simple() {
-        MockProver::run(1, &BracketCircuit::<Fq>::default(), vec![]).unwrap();
+    fn valid_1() {
+        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![]).unwrap();
     }
 }
