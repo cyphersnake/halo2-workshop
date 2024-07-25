@@ -1,3 +1,5 @@
+#![allow(clippy::just_underscores_and_digits)]
+
 use std::marker::PhantomData;
 
 use halo2_proofs::{
@@ -63,15 +65,18 @@ impl<const L: usize, F: PrimeField> Circuit<F> for BracketCircuit<L, F> {
             let _2 = Expression::Constant(F::from(2));
 
             let s_input = meta.query_selector(config.s_input);
-            let s_is_accum_zero = meta.query_selector(config.s_is_accum_zero);
             let input = meta.query_advice(config.input, Rotation::cur());
             let prev = meta.query_advice(config.accum, Rotation::cur());
             let result = meta.query_advice(config.accum, Rotation::next());
 
-            vec![
-                s_input * (prev.clone() + (_81 - _2 * input) - result),
-                s_is_accum_zero * prev,
-            ]
+            vec![s_input * (prev.clone() + (_81 - _2 * input) - result)]
+        });
+
+        meta.create_gate("accumulation zero check", |meta| {
+            let s_is_accum_zero = meta.query_selector(config.s_is_accum_zero);
+            let prev = meta.query_advice(config.accum, Rotation::cur());
+
+            vec![s_is_accum_zero * prev]
         });
 
         meta.create_gate("check_accum", |meta| {
@@ -141,19 +146,25 @@ impl<const L: usize, F: PrimeField> Circuit<F> for BracketCircuit<L, F> {
                 )?;
                 config.s_not_minus_one.enable(&mut region, 0)?;
 
-                self.input
+                let last = self
+                    .input
                     .iter()
                     .map(|sym| Value::known(F::from(*sym as u64)))
                     .enumerate()
-                    .try_fold(prev.value().copied(), |prev, (offset, sym)| {
+                    .try_fold(prev, |prev, (offset, sym)| {
                         config.s_input.enable(&mut region, offset)?;
 
                         region.assign_advice(|| "input", config.input, offset, || sym)?;
 
-                        let acc_value = _81 - (_2 * sym) + prev;
+                        let acc_value = _81 - (_2 * sym) + prev.value();
 
                         config.s_not_minus_one.enable(&mut region, offset + 1)?;
-                        region.assign_advice(|| "accum", config.accum, offset + 1, || acc_value)?;
+                        let next = region.assign_advice(
+                            || "accum",
+                            config.accum,
+                            offset + 1,
+                            || acc_value,
+                        )?;
                         region.assign_advice(
                             || "inv_accum",
                             config.inverted_accum_plus_1,
@@ -161,10 +172,12 @@ impl<const L: usize, F: PrimeField> Circuit<F> for BracketCircuit<L, F> {
                             || acc_value.map(|v| v.add(F::ONE).invert().unwrap_or_else(|| F::ZERO)),
                         )?;
 
-                        Result::<_, plonk::Error>::Ok(acc_value)
+                        Result::<_, plonk::Error>::Ok(next)
                     })?;
 
-                //config.s_is_accum_zero.enable(&mut region, L)?;
+                dbg!(last);
+
+                config.s_is_accum_zero.enable(&mut region, L)?;
 
                 Ok(())
             },
@@ -176,23 +189,25 @@ impl<const L: usize, F: PrimeField> Circuit<F> for BracketCircuit<L, F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::{dev::MockProver, pasta::Fq};
+    use halo2_proofs::{dev::MockProver, pasta::Fp};
 
     use super::*;
 
-    const K: u32 = 10;
-
     #[test]
-    fn unvalid_sym() {
-        MockProver::run(K, &BracketCircuit::<1, Fq>::new(['*']), vec![])
-            .unwrap()
-            .verify()
-            .unwrap_err();
+    fn valid() {
+        MockProver::run(
+            10,
+            &BracketCircuit::<10, Fp>::new(['(', '(', ')', '(', '(', ')', ')', '(', ')', ')']),
+            vec![],
+        )
+        .unwrap()
+        .verify()
+        .unwrap();
     }
 
     #[test]
-    fn valid_1() {
-        MockProver::run(K, &BracketCircuit::<2, Fq>::new(['(', ')']), vec![])
+    fn simple_valid() {
+        MockProver::run(10, &BracketCircuit::<2, Fp>::new(['(', ')']), vec![])
             .unwrap()
             .verify()
             .unwrap();
@@ -200,7 +215,31 @@ mod tests {
 
     #[test]
     fn unvalid_order() {
-        MockProver::run(K, &BracketCircuit::<2, Fq>::new([')', '(']), vec![])
+        MockProver::run(10, &BracketCircuit::<2, Fp>::new([')', '(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn unvalid_solo_symbol_open() {
+        MockProver::run(10, &BracketCircuit::<1, Fp>::new(['(']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn unvalid_solo_symbol_close() {
+        MockProver::run(10, &BracketCircuit::<1, Fp>::new([')']), vec![])
+            .unwrap()
+            .verify()
+            .unwrap_err();
+    }
+
+    #[test]
+    fn wrong_symbol() {
+        MockProver::run(10, &BracketCircuit::<1, Fp>::new(['*']), vec![])
             .unwrap()
             .verify()
             .unwrap_err();
