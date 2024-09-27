@@ -192,20 +192,20 @@ $gate2$ для валидации $x == 0$ с учетом верности $gat
 ### План реализации в коде
 Мы планируем реализовать наше решение в коде, используя halo2. Для этого разделим реализацию на три шага:
 
-#### Решаем, в каком виде и как будем хранить приватный вход
-- Определяем, что является публичным входом.
-- Определяем крайние случаи для тестирования.
-- Понимаем, что данный circuit нам дает в практическом смысле.
+#### 1. Решаем, в каком виде и как будем хранить приватный вход
+1.1 Определяем, что является публичным и приватным входом.
+1.2 Определяем крайние случаи для тестирования.
+1.3 Понимаем, что данный circuit нам дает в практическом смысле.
 
-#### Настройка ограничений
-- Выражаем gate/lookup, описанные в арифметизации, через ConstraintSystem.
-- Решаем, сколько у нас будет колонок и что в них будет лежать.
-- Реализуем Circuit::configure.
+#### 2. Настройка ограничений
+2.1 Выражаем gate/lookup, описанные в арифметизации, через ConstraintSystem.
+2.2 Решаем, сколько у нас будет колонок и что в них будет лежать.
+2.3 Реализуем Circuit::configure.
 
-#### Для конкретного входа заполняем ячейки таблицы
-- Ограничения, заданные ранее, не зависят от входа — это дизайн схемы.
-- Данные внутри таблицы, знание которых мы и доказываем, заполняются на этом этапе.
-- Реализуем Circuit::synthesize.
+#### 3. Для конкретного входа заполняем ячейки таблицы
+3.1 Ограничения, заданные ранее, не зависят от входа — это дизайн схемы.
+3.2 Данные внутри таблицы, знание которых мы и доказываем, заполняются на этом этапе.
+3.3 Реализуем Circuit::synthesize.
 
 ## Создаем проект:
 
@@ -215,3 +215,73 @@ cd halo2-workshop
 cargo add halo2_proofs
 ```
 
+Добавляем в lib.ru заготовку кода:
+
+```rust 
+use std::marker::PhantomData;
+
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner},
+    pasta::group::ff::PrimeField,
+    plonk::{Circuit, ConstraintSystem},
+};
+
+// Определяет сам circuit, а так же хранит внутри приватные входы для него
+#[derive(Default)]
+struct BracketCircuit<F: PrimeField> {
+    _p: PhantomData<F>,
+}
+
+// Хранит информацию о конфигурации PLONKish таблицы: колонки, lookup таблицы
+#[derive(Clone)]
+struct Config {}
+
+impl<F: PrimeField> Circuit<F> for BracketCircuit<F> {
+    type Config = Config;
+
+    // Игнорировать на данном этапе
+    type FloorPlanner = SimpleFloorPlanner;
+
+    // Игнорировать на данном этапе
+    fn without_witnesses(&self) -> Self {
+        todo!("Not needed at this stage.")
+    }
+
+    fn configure(_meta: &mut ConstraintSystem<F>) -> Self::Config {
+        todo!(
+            "Здесь задаются структура таблицы:
+            - столбцы
+            - gates (ограничения)
+            - lookup-таблицы"
+        )
+    }
+
+    fn synthesize(
+        &self,
+        _config: Self::Config,
+        _layouter: impl Layouter<F>,
+    ) -> Result<(), halo2_proofs::plonk::Error> {
+        todo!("Здесь будут заполнены ячейки таблицы")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::{dev::MockProver, pasta::Fq};
+
+    use super::*;
+
+    #[test]
+    fn simple() {
+        // Встроенный вспомогательный тип для тестирования
+        MockProver::run(
+            1,                                // Размер таблицы, заданный как $log2(row_count)$
+            &BracketCircuit::<Fq>::default(), // Экземпляр circuit
+            vec![],                           // Публичные входы
+        )
+        .unwrap();
+    }
+}
+```
+
+Данный код можно так же найти по [этой ссылку](https://github.com/cyphersnake/halo2-workshop/blob/step-1/src/lib.rs).
