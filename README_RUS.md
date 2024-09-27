@@ -195,10 +195,9 @@ $gate2$ для валидации $x == 0$ с учетом верности $gat
 #### 1. Решаем, в каком виде и как будем хранить приватный и публичный вход
 1.1 Определяем, что является публичным и приватным входом.
 1.2 Определяем крайние случаи для тестирования.
-1.3 Понимаем, что данный circuit нам дает в практическом смысле.
 
 #### 2. Настройка ограничений
-2.1 Выражаем gate/lookup, описанные в арифметизации, через ConstraintSystem.
+2.1 Выражаем gate/lookup, описанные в арифметизации, через `ConstraintSystem`.
 2.2 Решаем, сколько у нас будет колонок и что в них будет лежать.
 2.3 Реализуем Circuit::configure.
 
@@ -341,10 +340,8 @@ impl<F: PrimeField, const LEN: usize> BracketCircuit<F, LEN> {
 4. `"("`
 5. `")"`
 6. `"*"`
-7. `"ab"`
-8. `"[]"`
 
-В коде это будет выглядеть следующим образом
+В коде это будет выглядеть следующим образом:
 
 ```rust
 #[cfg(test)]
@@ -353,6 +350,7 @@ mod tests {
 
     use super::*;
 
+    // Для валидных кейсов
     #[test]
     fn valid() {
         MockProver::run(
@@ -365,14 +363,7 @@ mod tests {
         .unwrap();
     }
 
-    #[test]
-    fn simple_valid() {
-        MockProver::run(10, &BracketCircuit::<Fp, 2>::try_new("()").unwrap(), vec![])
-            .unwrap()
-            .verify()
-            .unwrap();
-    }
-
+    // Для не валидных
     #[test]
     fn unvalid_order() {
         MockProver::run(10, &BracketCircuit::<Fp, 2>::try_new(")(").unwrap(), vec![])
@@ -380,29 +371,9 @@ mod tests {
             .verify()
             .unwrap_err();
     }
-
-    #[test]
-    fn unvalid_solo_symbol_open() {
-        MockProver::run(10, &BracketCircuit::<Fp, 1>::try_new("(").unwrap(), vec![])
-            .unwrap()
-            .verify()
-            .unwrap_err();
-    }
-
-    #[test]
-    fn unvalid_solo_symbol_close() {
-        MockProver::run(10, &BracketCircuit::<Fp, 1>::try_new(")").unwrap(), vec![])
-            .unwrap()
-            .verify()
-            .unwrap_err();
-    }
-
-    #[test]
-    fn wrong_symbol() {
-        MockProver::run(10, &BracketCircuit::<Fp, 1>::try_new("*").unwrap(), vec![])
-            .unwrap()
-            .verify()
-            .unwrap_err();
-    }
 }
 ```
+
+### 2. Настройка ограничений
+
+#### 2.1 Выражаем gate/lookup, описанные в арифметизации, через `ConstraintSystem`.
